@@ -16,8 +16,6 @@ cmip6_data <- read_csv("cmip6_gcm_metrics.csv")
 # Print the dataset
 print("CMIP6 Climate Model Metrics:")
 print(cmip6_data)
-
-# Step 3: Normalize the Decision Matrix
 📌 CMIP6 Climate Model Evaluation Metrics Used:
 
     SSD (Sum of Squared Differences) → Minimize
@@ -30,7 +28,9 @@ print(cmip6_data)
     Bias → Minimize
     NSE (Nash-Sutcliffe Efficiency) → Maximize
 
-# Define correct impact signs for TOPSIS (use "+" for maximization and "-" for minimization)
+# Step 3: Normalize the Decision Matrix
+
+# Define correct impact signs  (use "+" for maximization and "-" for minimization)
 criteria_types <- c("-", "-", "-", "+", "-", "-", "-", "-", "+")  # Adjusted to correct signs
 
 # Normalize function (Min-Max Scaling)
@@ -118,6 +118,8 @@ result_topsis <- data.frame(Model = cmip6_data$Model, Score = topsis_result$scor
 
 # Print TOPSIS Ranking
 print("TOPSIS Ranking:")
+print(result_topsis[order(result_topsis$Rank), ])
+
 # Ensure All Ranking Results Exist
 print(result_topsis[order(result_topsis$Rank), ])
 print(result_entropy)
