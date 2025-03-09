@@ -1,94 +1,160 @@
-<header>
+Ranking CMIP6 Climate Models Using Multi-Criteria Decision-Making (MCDM) | Climate Data Analysis in R
+# Step 1: Install & Load Required Packages
+install.packages(c("topsis", "MCDA", "PMCMRplus", "dplyr", "ggplot2", "readr", "GameTheory"))  
+library(topsis)       # For TOPSIS ranking
+library(MCDA)         # For Cooperative Game Theory
+library(PMCMRplus)    # For pairwise ranking analysis
+library(dplyr)        # For data manipulation
+library(ggplot2)      # For visualization
+library(readr)        # For reading CSV files
+library(GameTheory)   # For Shapley Value calculation
 
-<!--
-  <<< Author notes: Course header >>>
-  Read <https://skills.github.com/quickstart> for more information about how to build courses using this template.
-  Include a 1280×640 image, course name in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Next to "About", add description & tags; disable releases, packages, & environments.
-  Add your open source license, GitHub uses the MIT license.
--->
+# Step 2: Load Data into R
+# Load CMIP6 data from CSV
+cmip6_data <- read_csv("cmip6_gcm_metrics.csv")
 
-# Code with GitHub Copilot
+# Print the dataset
+print("CMIP6 Climate Model Metrics:")
+print(cmip6_data)
 
-_GitHub Copilot can help you code by offering autocomplete-style suggestions right in VS Code and Codespaces._
+# Step 3: Normalize the Decision Matrix
+📌 CMIP6 Climate Model Evaluation Metrics Used:
 
-</header>
+    SSD (Sum of Squared Differences) → Minimize
+    MSD (Mean Squared Difference) → Minimize
+    RMSD (Root Mean Squared Deviation) → Minimize
+    CC (Correlation Coefficient) → Maximize
+    NRMSD (Normalized RMSD) → Minimize
+    ANMBD (Annual Normalized Mean Bias Deviation) → Minimize
+    ARRBD (Annual Relative Root Bias Deviation) → Minimize
+    Bias → Minimize
+    NSE (Nash-Sutcliffe Efficiency) → Maximize
 
-<!--
-  <<< Author notes: Step 1 >>>
-  Choose 3-5 steps for your course.
-  The first step is always the hardest, so pick something easy!
-  Link to docs.github.com for further explanations.
-  Encourage users to open new tabs for steps!
--->
+# Define correct impact signs for TOPSIS (use "+" for maximization and "-" for minimization)
+criteria_types <- c("-", "-", "-", "+", "-", "-", "-", "-", "+")  # Adjusted to correct signs
 
-## Step 1: Leverage Codespaces with VS Code for Copilot
+# Normalize function (Min-Max Scaling)
+normalize_matrix <- function(matrix, criteria_types) {
+  norm_matrix <- matrix
+  for (i in 1:ncol(matrix)) {
+    if (criteria_types[i] == "-") {
+      norm_matrix[, i] <- (max(matrix[, i]) - matrix[, i]) / (max(matrix[, i]) - min(matrix[, i]) + 1e-10)
+    } else {
+      norm_matrix[, i] <- (matrix[, i] - min(matrix[, i])) / (max(matrix[, i]) - min(matrix[, i]) + 1e-10)
+    }
+  }
+  return(norm_matrix)
+}
 
-_Welcome to "Develop With AI Powered Code Suggestions Using GitHub Copilot and VS Code"! :wave:_
+# Normalize CMIP6 metrics
+decision_matrix <- as.matrix(cmip6_data[, 2:10])  # Extract numerical columns
+norm_matrix <- normalize_matrix(decision_matrix, criteria_types)
 
-GitHub Copilot is an AI pair programmer that helps you write code faster and with less work. It draws context from comments and code to suggest individual lines and whole functions instantly. GitHub Copilot is powered by OpenAI Codex, a generative pretrained language model created by OpenAI.
+# Step 4: Compute Entropy Weights
+compute_entropy <- function(norm_matrix) {
+  prob_matrix <- norm_matrix / rowSums(norm_matrix + 1e-10)
+  entropy_values <- -colSums(prob_matrix * log(prob_matrix + 1e-10)) / log(nrow(norm_matrix))
+  return(entropy_values)
+}
 
-**Copilot works with many code editors including VS Code, Visual Studio, JetBrains IDE, and Neovim.**
+# Compute entropy values and weights
+entropy_values <- compute_entropy(norm_matrix)
+weights_entropy <- (1 - entropy_values) / sum(1 - entropy_values)
 
-Additionally, GitHub Copilot is trained on all languages that appear in public repositories. For each language, the quality of suggestions you receive may depend on the volume and diversity of training data for that language.
+print("Entropy Weights for Criteria:")
+print(weights_entropy)
 
-Using Copilot inside a Codespace shows just how easy it is to get up and running with GitHub's suite of [Collaborative Coding](https://github.com/features#features-collaboration) tools.
+# Step 5: Rank GCMs using Multiple Methods
+# 1. Entropy Weighting Ranking
+final_scores_entropy <- rowSums(norm_matrix * weights_entropy)
+ranking_entropy <- rank(-final_scores_entropy)  
+result_entropy <- data.frame(Model = cmip6_data$Model, Score = final_scores_entropy, Rank = ranking_entropy)
+print("Entropy Weighting Ranking:")
+print(result_entropy[order(result_entropy$Rank), ])
 
-> **Note**
-> This skills exercise will focus on leveraging GitHub Codespace. It is recommended that you complete the GitHub skill, [Codespaces](https://github.com/skills/code-with-codespaces), before moving forward with this exercise.
+# 2. Weighted Average Technique (WAT)
+final_scores_wat <- rowSums(decision_matrix * weights_entropy)
+ranking_wat <- rank(-final_scores_wat)
+result_wat <- data.frame(Model = cmip6_data$Model, Score = final_scores_wat, Rank = ranking_wat)
+print("Weighted Average Technique (WAT) Ranking:")
+print(result_wat[order(result_wat$Rank), ])
 
-### :keyboard: Activity: Enable Copilot inside a Codespace
+# 3. Cooperative Game Theory (Shapley Value)
+# Define a function to calculate Shapley Value
+calculate_shapley <- function(weights, decision_matrix) {
+  # Normalize the decision matrix (if not already normalized)
+  norm_matrix <- normalize_matrix(decision_matrix, criteria_types)
+  
+  # Calculate Shapley Value (example implementation)
+  shapley_values <- apply(norm_matrix, 1, function(row) {
+    sum(row * weights) / length(row)
+  })
+  
+  return(shapley_values)
+}
 
-**We recommend opening another browser tab to work through the following activities so you can keep these instructions open for reference.**
+# Compute Shapley Value
+shapley_result <- calculate_shapley(weights_entropy, decision_matrix)
 
-Before you open up a codespace on a repository, you can create a development container and define specific extensions or configurations that will be used or installed in your codespace. Let's create this development container and add copilot to the list of extensions.
+# Rank based on Shapley Value
+ranking_coop <- rank(-shapley_result)
 
-1. Navigating back to your **Code** tab of your repository, click the **Add file** drop-down button, and then click `Create new file`.
-1. Type or paste the following in the empty text field prompt to name your file.
-   ```
-   .devcontainer/devcontainer.json
-   ```
-1. In the body of the new **.devcontainer/devcontainer.json** file, add the following content:
-   ```
-   {
-       // Name this configuration
-       "name": "Codespace for Skills!",
-       "customizations": {
-           "vscode": {
-               "extensions": [
-                   "GitHub.copilot"
-               ]
-           }
-       }
-   }
-   ```
-1. Select the option to **Commit directly to the `main` branch**, and then click the **Commit new file** button.
-1. Navigate back to the home page of your repository by clicking the **Code** tab located at the top left of the screen.
-1. Click the **Code** button located in the middle of the page.
-1. Click the **Codespaces** tab on the box that pops up.
-1. Click the **Create codespace on main** button.
+# Store Results
+result_coop <- data.frame(Model = cmip6_data$Model, Score = shapley_result, Rank = ranking_coop)
 
-   **Wait about 2 minutes for the codespace to spin itself up.**
+# Print Cooperative Game Theory (Shapley) Ranking
+print("Cooperative Game Theory (Shapley) Ranking:")
+print(result_coop[order(result_coop$Rank), ])
 
-1. Verify your codespace is running. The browser should contain a VS Code web-based editor and a terminal should be present such as the below:
-   ![Screen Shot 2023-03-09 at 9 09 07 AM](https://user-images.githubusercontent.com/26442605/224102962-d0222578-3f10-4566-856d-8d59f28fcf2e.png)
-1. The `copilot` extension should show up in the VS Code extension list. Click the extensions sidebar tab. You should see the following:
-   ![Screen Shot 2023-03-09 at 9 04 13 AM](https://user-images.githubusercontent.com/26442605/224102514-7d6d2f51-f435-401d-a529-7bae3ae3e511.png)
+# 4. TOPSIS Ranking
+# Run TOPSIS with corrected criteria_types
+topsis_result <- topsis(decision_matrix, weights_entropy, criteria_types)
 
-**Wait about 60 seconds then refresh your repository landing page for the next step.**
+# Extract ranking
+ranking_topsis <- topsis_result$rank
 
-<footer>
+# Store Results
+result_topsis <- data.frame(Model = cmip6_data$Model, Score = topsis_result$score, Rank = ranking_topsis)
 
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
+# Print TOPSIS Ranking
+print("TOPSIS Ranking:")
+# Ensure All Ranking Results Exist
+print(result_topsis[order(result_topsis$Rank), ])
+print(result_entropy)
+print(result_wat)
+print(result_coop)
+print(result_topsis)
+# Step 6: Final Mixed-Methods Ranking
+# Combine all rankings into a single data frame
+combined_rankings <- data.frame(
+  Model = cmip6_data$Model,
+  Entropy_Rank = result_entropy$Rank,
+  WAT_Rank = result_wat$Rank,
+  Shapley_Rank = result_coop$Rank,
+  TOPSIS_Rank = result_topsis$Rank
+)
 
----
+# Calculate average rank for each model
+combined_rankings$Average_Rank <- rowMeans(combined_rankings[, -1])  # Exclude the "Model" column
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/code-with-copilot) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+# Rank models based on average rank
+combined_rankings$Final_Rank <- rank(combined_rankings$Average_Rank)
 
-&copy; 2023 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+# Sort by final rank
+final_ranking <- combined_rankings[order(combined_rankings$Final_Rank), ]
 
-</footer>
+# Print the final mixed-methods ranking
+print("Final Mixed-Methods Ranking:")
+print(final_ranking[, c("Model", "Average_Rank", "Final_Rank")])
+
+# Step 7: Visualize the Final Ranking
+ggplot(final_ranking, aes(x = reorder(Model, -Final_Rank), y = Final_Rank)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Final Mixed-Methods Ranking of Climate Models",
+       x = "Model",
+       y = "Final Rank") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Step 8: Save the Final Ranking to a CSV File
+write_csv(final_ranking, "final_mixed_methods_ranking.csv")
